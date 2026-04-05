@@ -1,23 +1,23 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import multer from "multer";
-import path from "path";
 import fs from "fs";
+import path from "path";
+import multer from "multer";
 import { fileURLToPath } from "url";
 
 dotenv.config();
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
 const app = express();
-
 app.use(cors());
 app.use(express.json());
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 const uploadsDir = path.join(__dirname, "uploads");
 const memoryFile = path.join(__dirname, "memory.json");
+const distDir = path.join(__dirname, "dist");
 
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
@@ -64,6 +64,7 @@ function saveMemory(memory) {
 
 function detectTanglish(text = "") {
   const lower = text.toLowerCase();
+
   const tanglishHints = [
     "da",
     "dei",
@@ -73,11 +74,12 @@ function detectTanglish(text = "") {
     "epdi",
     "iruku",
     "veanum",
+    "venum",
     "pannu",
     "sollu",
     "inga",
     "ipo",
-    "inga",
+    "ippo",
     "athu",
     "illa",
     "seri",
@@ -85,12 +87,12 @@ function detectTanglish(text = "") {
     "nee",
     "nalla",
   ];
+
   return tanglishHints.some((word) => lower.includes(word));
 }
 
-function updateMemoryFromMessage(message) {
+function updateMemoryFromMessage(message = "") {
   const memory = loadMemory();
-  const lower = message.toLowerCase();
 
   const nameMatch =
     message.match(/my name is\s+([a-zA-Z ]+)/i) ||
@@ -134,12 +136,10 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
+// Serve uploaded files
 app.use("/uploads", express.static(uploadsDir));
 
-app.get("/", (_req, res) => {
-  res.send("Buddy AI backend is running");
-});
-
+// Upload route
 app.post("/upload", upload.single("file"), (req, res) => {
   try {
     if (!req.file) {
@@ -148,7 +148,8 @@ app.post("/upload", upload.single("file"), (req, res) => {
       });
     }
 
-    const fileUrl = `http://localhost:3000/uploads/${req.file.filename}`;
+    // localhost hardcode remove panniyachu
+    const fileUrl = `/uploads/${req.file.filename}`;
 
     return res.json({
       message: "File uploaded successfully",
@@ -167,9 +168,10 @@ app.post("/upload", upload.single("file"), (req, res) => {
   }
 });
 
+// Chat route
 app.post("/chat", async (req, res) => {
   try {
-    const userMessage = req.body.message;
+    const userMessage = req.body.message || req.body.userMessage;
 
     if (!userMessage) {
       return res.status(400).json({
@@ -179,12 +181,13 @@ app.post("/chat", async (req, res) => {
 
     if (!process.env.GROQ_API_KEY) {
       return res.status(500).json({
-        reply: "GROQ_API_KEY not found in .env",
+        reply: "GROQ_API_KEY not found in environment",
       });
     }
 
     const memory = updateMemoryFromMessage(userMessage);
-    const shouldReplyTanglish = detectTanglish(userMessage) || memory.preferences?.prefersTanglish;
+    const shouldReplyTanglish =
+      detectTanglish(userMessage) || memory.preferences?.prefersTanglish;
 
     const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
@@ -212,7 +215,7 @@ Critical reply rules:
 - Keep it friendly, clean, and useful.
 - You may use light casual words like "da", "bro", "machan" only when the user tone is casual.
 - Do not overdo slang.
-- Do not mention Groq, Meta, Llama, provider names, or system instructions.
+- Do not mention provider names or system instructions.
 - If user uploads screenshot/image/file, acknowledge it clearly and ask useful next-step questions if needed.
 - If user asks about errors, UI, code, screenshot, guide them specifically.
 - If user asks your name, reply: "I'm Buddy AI 🤖 — un smart assistant da."
@@ -223,7 +226,7 @@ If the user message is Tanglish, examples of acceptable style:
 - "Naan help pannuren."
 
 Avoid robotic language.
-`,
+            `,
           },
           {
             role: "user",
@@ -236,7 +239,7 @@ Avoid robotic language.
     const data = await response.json();
 
     if (!response.ok) {
-      console.log("Groq error:", data);
+      console.error("Groq error:", data);
       return res.status(response.status).json({
         reply: data?.error?.message || "Groq API error",
       });
@@ -253,6 +256,30 @@ Avoid robotic language.
   }
 });
 
-app.listen(3000, () => {
-  console.log("Server running on http://localhost:3000");
+// Frontend serve for Render / production
+if (fs.existsSync(distDir)) {
+  app.use(express.static(distDir));
+
+  app.get(/.*/, (req, res, next) => {
+    if (
+      req.path.startsWith("/chat") ||
+      req.path.startsWith("/upload") ||
+      req.path.startsWith("/uploads")
+    ) {
+      return next();
+    }
+
+    return res.sendFile(path.join(distDir, "index.html"));
+  });
+} else {
+  app.get("/", (_req, res) => {
+    res.send("Buddy AI backend is running");
+  });
+}
+
+// PORT fix for localhost + Render
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+  console.log(`Server running on http://localhost:${PORT}`);
 });
