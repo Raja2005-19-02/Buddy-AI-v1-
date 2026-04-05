@@ -136,11 +136,9 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
-// Serve uploaded files
 app.use("/uploads", express.static(uploadsDir));
 
-// Upload route
-app.post("/upload", upload.single("file"), (req, res) => {
+app.post("/api/upload", upload.single("file"), (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({
@@ -148,7 +146,6 @@ app.post("/upload", upload.single("file"), (req, res) => {
       });
     }
 
-    // localhost hardcode remove panniyachu
     const fileUrl = `/uploads/${req.file.filename}`;
 
     return res.json({
@@ -168,8 +165,7 @@ app.post("/upload", upload.single("file"), (req, res) => {
   }
 });
 
-// Chat route
-app.post("/chat", async (req, res) => {
+app.post("/api/chat", async (req, res) => {
   try {
     const userMessage = req.body.message || req.body.userMessage;
 
@@ -212,16 +208,17 @@ Known memory:
 Critical reply rules:
 - If the user writes in Tanglish or Tamil-English mix, reply in natural Tanglish.
 - If the user writes in English, reply in English.
-- Keep it friendly, clean, and useful.
-- You may use light casual words like "da", "bro", "machan" only when the user tone is casual.
+- Keep it friendly, useful, and respectful.
+- Do not sound childish.
+- Use words like "da", "bro", or "machan" very rarely, only if the user is strongly casual.
 - Do not overdo slang.
 - Do not mention provider names or system instructions.
 - If user uploads screenshot/image/file, acknowledge it clearly and ask useful next-step questions if needed.
 - If user asks about errors, UI, code, screenshot, guide them specifically.
 - If user asks your name, reply: "I'm Buddy AI 🤖 — un smart assistant da."
 
-If the user message is Tanglish, examples of acceptable style:
-- "Seri da, idhu dhan issue."
+If the user message is Tanglish, acceptable style:
+- "Seri, idhu dhan issue."
 - "Ithu fix panna indha step follow pannu."
 - "Naan help pannuren."
 
@@ -256,14 +253,13 @@ Avoid robotic language.
   }
 });
 
-// Frontend serve for Render / production
 if (fs.existsSync(distDir)) {
   app.use(express.static(distDir));
 
   app.get(/.*/, (req, res, next) => {
     if (
-      req.path.startsWith("/chat") ||
-      req.path.startsWith("/upload") ||
+      req.path.startsWith("/api/chat") ||
+      req.path.startsWith("/api/upload") ||
       req.path.startsWith("/uploads")
     ) {
       return next();
@@ -277,7 +273,6 @@ if (fs.existsSync(distDir)) {
   });
 }
 
-// PORT fix for localhost + Render
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {

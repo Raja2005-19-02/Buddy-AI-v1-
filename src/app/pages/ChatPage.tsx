@@ -183,6 +183,39 @@ export default function ChatPage() {
   useEffect(() => {
     localStorage.setItem("buddy_plan", JSON.stringify(currentPlan));
   }, [currentPlan]);
+  useEffect(() => {
+  let startY = 0;
+  let endY = 0;
+
+  const onTouchStart = (e: TouchEvent) => {
+    if (window.scrollY === 0) {
+      startY = e.touches[0].clientY;
+      endY = e.touches[0].clientY;
+    }
+  };
+
+  const onTouchMove = (e: TouchEvent) => {
+    endY = e.touches[0].clientY;
+  };
+
+  const onTouchEnd = () => {
+    if (window.scrollY === 0 && endY - startY > 90) {
+      window.location.reload();
+    }
+    startY = 0;
+    endY = 0;
+  };
+
+  window.addEventListener("touchstart", onTouchStart, { passive: true });
+  window.addEventListener("touchmove", onTouchMove, { passive: true });
+  window.addEventListener("touchend", onTouchEnd);
+
+  return () => {
+    window.removeEventListener("touchstart", onTouchStart);
+    window.removeEventListener("touchmove", onTouchMove);
+    window.removeEventListener("touchend", onTouchEnd);
+  };
+}, []);
 
   const uploadSingleFile = async (file: File) => {
     const fallbackLocalUrl = URL.createObjectURL(file);
@@ -190,10 +223,10 @@ export default function ChatPage() {
     formData.append("file", file);
 
     try {
-      const uploadRes = await fetch("http://localhost:3000/upload", {
-        method: "POST",
-        body: formData,
-      });
+      const uploadRes = await fetch("/api/upload", {
+  method: "POST",
+  body: formData,
+});
 
       const uploadData = await uploadRes.json();
 
@@ -280,52 +313,65 @@ export default function ChatPage() {
               : `User uploaded ${uploadedFiles.length} file(s): ${fileNamesText}. Please acknowledge the files and ask what they want to do with them.`
             : trimmed;
 
-        const res = await fetch("http://localhost:3000/chat", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            message: backendMessage,
-          }),
-        });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 20000);
 
-        const data = await res.json();
+  try {
+    const res = await fetch("/api/chat", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        message: backendMessage,
+      }),
+      signal: controller.signal,
+    });
 
-        const aiMsg: Message = {
-          id: `${Date.now()}-ai`,
-          role: "ai",
-          content: data.reply || "No reply from AI",
-          timestamp: new Date(),
-        };
+    clearTimeout(timeoutId);
 
-        setMessages((prev) => {
-          const updatedMessages = [...prev, aiMsg];
-          saveCurrentChatToHistory(updatedMessages);
-          return updatedMessages;
-        });
-      } catch {
-        const fallbackReply =
-          uploadedFiles.length > 0
-            ? `Naan un ${uploadedFiles.length} file(s) receive panniten 📎\n\nIdhula enna help venum — summarize, explain, extract details, compare, illa based on this solve pannava?`
-            : "Server connect aagala da. Konjam apram try pannu.";
+    const data = await res.json();
 
-        const aiMsg: Message = {
-          id: `${Date.now()}-ai`,
-          role: "ai",
-          content: fallbackReply,
-          timestamp: new Date(),
-        };
+    const aiMsg: Message = {
+      id: `${Date.now()}-ai`,
+      role: "ai",
+      content: data.reply || "No reply from AI",
+      timestamp: new Date(),
+    };
 
-        setMessages((prev) => {
-          const updatedMessages = [...prev, aiMsg];
-          saveCurrentChatToHistory(updatedMessages);
-          return updatedMessages;
-        });
-      } finally {
-        setIsTyping(false);
-        scrollToBottom();
-      }
+    setMessages((prev) => {
+      const updatedMessages = [...prev, aiMsg];
+      saveCurrentChatToHistory(updatedMessages);
+      return updatedMessages;
+    });
+  } catch {
+    clearTimeout(timeoutId);
+
+    const fallbackReply =
+      uploadedFiles.length > 0
+        ? `Naan un ${uploadedFiles.length} file(s) receive panniten 📎\n\nIdhula enna help venum — summarize, explain, extract details, compare, illa based on this solve pannava?`
+        : "Connection weak ah iruku da. Reload pannitu illa konjam apram try pannu.";
+
+    const aiMsg: Message = {
+      id: `${Date.now()}-ai`,
+      role: "ai",
+      content: fallbackReply,
+      timestamp: new Date(),
+    };
+
+    setMessages((prev) => {
+      const updatedMessages = [...prev, aiMsg];
+      saveCurrentChatToHistory(updatedMessages);
+      return updatedMessages;
+    });
+  } finally {
+    setIsTyping(false);
+    scrollToBottom();
+  }
+} finally {
+  setIsTyping(false);
+  scrollToBottom();
+}
     },
     [scrollToBottom, saveCurrentChatToHistory, isProUser, chatHistory.length, activeChatId]
   );

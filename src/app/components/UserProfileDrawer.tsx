@@ -92,7 +92,7 @@ export function UserProfileDrawer({
   const handleLogout = () => {
     localStorage.removeItem("buddy_session");
     alert("Logout complete da");
-    window.location.reload();
+    window.location.href = "/";
   };
 
   const saveName = () => {
