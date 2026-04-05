@@ -619,8 +619,6 @@ export default function ChatPage() {
         <UpgradeModal
           open={upgradeOpen}
           onClose={() => setUpgradeOpen(false)}
-          currentPlan={currentPlan}
-          onPlanChange={handlePlanChange}
         />
       </div>
     </div>
