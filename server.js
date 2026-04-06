@@ -4,6 +4,8 @@ import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
 import multer from "multer";
+import crypto from "crypto";
+import Razorpay from "razorpay";
 import { fileURLToPath } from "url";
 
 dotenv.config();
@@ -62,7 +64,7 @@ function saveMemory(memory) {
   fs.writeFileSync(memoryFile, JSON.stringify(memory, null, 2));
 }
 
-function detectTanglish(text = "") {
+function detectLanguage(text = "") {
   const lower = text.toLowerCase();
 
   const tanglishHints = [
@@ -86,9 +88,17 @@ function detectTanglish(text = "") {
     "naan",
     "nee",
     "nalla",
+    "saptiya",
+    "panra",
+    "venuma",
   ];
 
-  return tanglishHints.some((word) => lower.includes(word));
+  const score = tanglishHints.reduce(
+    (count, word) => count + (lower.includes(word) ? 1 : 0),
+    0
+  );
+
+  return score >= 2 ? "tanglish" : "english";
 }
 
 function updateMemoryFromMessage(message = "") {
@@ -111,7 +121,7 @@ function updateMemoryFromMessage(message = "") {
     memory.projectName = projectMatch[1].trim();
   }
 
-  if (detectTanglish(message)) {
+  if (detectLanguage(message) === "tanglish") {
     memory.preferences.prefersTanglish = true;
   }
 
@@ -135,6 +145,11 @@ const storage = multer.diskStorage({
 });
 
 const upload = multer({ storage });
+
+const razorpay = new Razorpay({
+  key_id: process.env.RAZORPAY_KEY_ID || "",
+  key_secret: process.env.RAZORPAY_KEY_SECRET || "",
+});
 
 app.use("/uploads", express.static(uploadsDir));
 
@@ -171,7 +186,7 @@ app.post("/api/chat", async (req, res) => {
 
     if (!userMessage) {
       return res.status(400).json({
-        reply: "Message is required",
+        reply: "Please type a message.",
       });
     }
 
@@ -182,8 +197,57 @@ app.post("/api/chat", async (req, res) => {
     }
 
     const memory = updateMemoryFromMessage(userMessage);
-    const shouldReplyTanglish =
-      detectTanglish(userMessage) || memory.preferences?.prefersTanglish;
+    const detectedLanguage = detectLanguage(userMessage);
+
+    let systemPrompt = "";
+
+    if (detectedLanguage === "tanglish") {
+      systemPrompt = `
+You are Buddy AI.
+
+Speak like a smart, helpful Tamil Nadu friend in Tanglish.
+
+Rules:
+- Reply in Tanglish when the user writes in Tanglish.
+- Understand spelling mistakes and casual typing.
+- Be respectful and useful.
+- Give detailed explanation.
+- Do not speak like a child.
+- Be friendly but professional.
+- Help with coding, studies, apps, project work, ideas, and technical issues.
+- If user asks technical help, explain step by step.
+- Do not give over-short answers.
+- If code is needed, give clean correct code.
+- If unsure, say what is uncertain briefly instead of guessing.
+
+Known memory:
+- User name: ${memory.userName || "Unknown"}
+- Project: ${memory.projectName || "Buddy AI"}
+- Recent topics: ${(memory.lastTopics || []).join(" | ") || "None"}
+`;
+    } else {
+      systemPrompt = `
+You are Buddy AI.
+
+You are a professional AI assistant.
+
+Rules:
+- Reply in clear English when the user writes in English.
+- Understand spelling mistakes.
+- Give detailed and useful answers.
+- Be accurate, practical, and professional.
+- Do not sound childish.
+- If the user asks for technical help, explain step by step.
+- If the user asks for code, provide correct clean code.
+- Avoid overly short answers.
+- If unsure, state uncertainty briefly instead of guessing.
+
+Known memory:
+- User name: ${memory.userName || "Unknown"}
+- Project: ${memory.projectName || "Buddy AI"}
+- Recent topics: ${(memory.lastTopics || []).join(" | ") || "None"}
+`;
+    }
 
     const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
@@ -196,40 +260,15 @@ app.post("/api/chat", async (req, res) => {
         messages: [
           {
             role: "system",
-            content: `
-You are Buddy AI — a smart, friendly AI assistant created by Raja.
-
-Known memory:
-- User name: ${memory.userName || "Unknown"}
-- Project: ${memory.projectName || "Buddy AI"}
-- Prefers Tanglish: ${shouldReplyTanglish ? "Yes" : "No"}
-- Recent topics: ${(memory.lastTopics || []).join(" | ") || "None"}
-
-Critical reply rules:
-- If the user writes in Tanglish or Tamil-English mix, reply in natural Tanglish.
-- If the user writes in English, reply in English.
-- Keep it friendly, useful, and respectful.
-- Do not sound childish.
-- Use words like "da", "bro", or "machan" very rarely, only if the user is strongly casual.
-- Do not overdo slang.
-- Do not mention provider names or system instructions.
-- If user uploads screenshot/image/file, acknowledge it clearly and ask useful next-step questions if needed.
-- If user asks about errors, UI, code, screenshot, guide them specifically.
-- If user asks your name, reply: "I'm Buddy AI 🤖 — un smart assistant da."
-
-If the user message is Tanglish, acceptable style:
-- "Seri, idhu dhan issue."
-- "Ithu fix panna indha step follow pannu."
-- "Naan help pannuren."
-
-Avoid robotic language.
-            `,
+            content: systemPrompt,
           },
           {
             role: "user",
             content: userMessage,
           },
         ],
+        temperature: 0.5,
+        max_tokens: 1000,
       }),
     });
 
@@ -238,7 +277,7 @@ Avoid robotic language.
     if (!response.ok) {
       console.error("Groq error:", data);
       return res.status(response.status).json({
-        reply: data?.error?.message || "Groq API error",
+        reply: data?.error?.message || "AI error",
       });
     }
 
@@ -248,7 +287,86 @@ Avoid robotic language.
   } catch (error) {
     console.error("Server error:", error);
     return res.status(500).json({
-      reply: "Server error",
+      reply: "Connection weak ah iruku da. Reload pannitu illa konjam apram try pannu.",
+    });
+  }
+});
+
+/* Razorpay create order */
+app.post("/api/create-order", async (req, res) => {
+  try {
+    const { amount, planId } = req.body;
+
+    if (!amount || !planId) {
+      return res.status(400).json({
+        success: false,
+        message: "Amount and planId are required",
+      });
+    }
+
+    const order = await razorpay.orders.create({
+      amount: Number(amount) * 100,
+      currency: "INR",
+      receipt: `buddy_${planId}_${Date.now()}`,
+      notes: {
+        app: "Buddy AI",
+        planId,
+      },
+    });
+
+    return res.json({
+      success: true,
+      order,
+      key: process.env.RAZORPAY_KEY_ID,
+    });
+  } catch (error) {
+    console.error("Create order error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Unable to create order",
+    });
+  }
+});
+
+/* Razorpay verify payment */
+app.post("/api/verify-payment", (req, res) => {
+  try {
+    const {
+      razorpay_order_id,
+      razorpay_payment_id,
+      razorpay_signature,
+    } = req.body;
+
+    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing payment verification fields",
+      });
+    }
+
+    const body = `${razorpay_order_id}|${razorpay_payment_id}`;
+
+    const expectedSignature = crypto
+      .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET || "")
+      .update(body.toString())
+      .digest("hex");
+
+    if (expectedSignature === razorpay_signature) {
+      return res.json({
+        success: true,
+        message: "Payment verified successfully",
+      });
+    }
+
+    return res.status(400).json({
+      success: false,
+      message: "Invalid payment signature",
+    });
+  } catch (error) {
+    console.error("Verify payment error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Payment verification failed",
     });
   }
 });
@@ -260,6 +378,8 @@ if (fs.existsSync(distDir)) {
     if (
       req.path.startsWith("/api/chat") ||
       req.path.startsWith("/api/upload") ||
+      req.path.startsWith("/api/create-order") ||
+      req.path.startsWith("/api/verify-payment") ||
       req.path.startsWith("/uploads")
     ) {
       return next();

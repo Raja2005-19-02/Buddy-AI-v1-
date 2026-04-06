@@ -54,6 +54,7 @@
     "motion": "^12.23.22",
     "multer": "^2.0.2",
     "path-to-regexp": "^8.3.0",
+    "razorpay": "^2.9.6",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router": "^7.6.2",

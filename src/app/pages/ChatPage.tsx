@@ -1,13 +1,19 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { MessageBubble, Message } from "../components/MessageBubble";
-import { TypingIndicator } from "../components/TypingIndicator";
 import { ChatHeader } from "../components/ChatHeader";
 import { ChatInput } from "../components/ChatInput";
+import { MessageBubble, Message } from "../components/MessageBubble";
+import { TypingIndicator } from "../components/TypingIndicator";
 import { HistoryDrawer } from "../components/HistoryDrawer";
 import { BuddyAvatar } from "../components/BuddyAvatar";
 import { UserProfileDrawer } from "../components/UserProfileDrawer";
 import { UpgradeModal } from "../components/UpgradeModal";
+
+declare global {
+  interface Window {
+    Razorpay: any;
+  }
+}
 
 type ChatSession = {
   id: string;
@@ -38,7 +44,7 @@ const initialMessages: Message[] = [
     id: "1",
     role: "ai",
     content:
-      "Hey! I'm **Buddy AI** 🤖\n\nUn smart assistant da — coding, ideas, study, app building, daily help ellathukkum ready.\n\nEnna help venum?",
+      "Hey! I'm **Buddy AI** 🤖\n\nYour smart assistant — coding, ideas, study, app building, daily help ellathukkum ready.\n\nHow can I help you?",
     timestamp: new Date(Date.now() - 8 * 60000),
   },
 ];
@@ -90,34 +96,41 @@ export default function ChatPage() {
     const saved = localStorage.getItem("buddy_messages");
     if (!saved) return initialMessages;
 
-    const parsed = JSON.parse(saved);
-
-    return parsed.map((msg: any) => ({
-      ...msg,
-      timestamp: new Date(msg.timestamp),
-    }));
+    try {
+      const parsed = JSON.parse(saved);
+      return parsed.map((msg: any) => ({
+        ...msg,
+        timestamp: new Date(msg.timestamp),
+      }));
+    } catch {
+      return initialMessages;
+    }
   });
 
   const [chatHistory, setChatHistory] = useState<ChatSession[]>(() => {
     const saved = localStorage.getItem("buddy_chat_history");
     if (!saved) return [];
 
-    const parsed = JSON.parse(saved);
+    try {
+      const parsed = JSON.parse(saved);
 
-    return parsed.map((chat: any) => ({
-      ...chat,
-      messages: chat.messages.map((msg: any) => ({
-        ...msg,
-        timestamp: new Date(msg.timestamp),
-      })),
-    }));
+      return parsed.map((chat: any) => ({
+        ...chat,
+        messages: chat.messages.map((msg: any) => ({
+          ...msg,
+          timestamp: new Date(msg.timestamp),
+        })),
+      }));
+    } catch {
+      return [];
+    }
   });
 
   const [isTyping, setIsTyping] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
+  const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [currentPlan, setCurrentPlan] = useState<StoredPlan>(() => getStoredPlan());
 
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -157,10 +170,10 @@ export default function ChatPage() {
         lastMessage.content?.trim() || lastMessage.fileName || "";
 
       const preview =
-        previewSource.length > 50 ? previewSource.slice(0, 50) : previewSource;
+        previewSource.length > 50 ? previewSource.slice(0, 50) + "..." : previewSource;
 
       const newSession: ChatSession = {
-        id: Date.now().toString(),
+        id: activeChatId || Date.now().toString(),
         title,
         preview,
         messages: updatedMessages,
@@ -171,14 +184,14 @@ export default function ChatPage() {
       setActiveChatId(newSession.id);
 
       setChatHistory((prev) => {
-        const filteredPrev = prev.filter((item) => item.title !== title);
+        const filteredPrev = prev.filter((item) => item.id !== newSession.id);
         const updated = [newSession, ...filteredPrev];
 
         if (isProUser) return updated;
         return updated.slice(0, MAX_BASIC_CHATS);
       });
     },
-    [isProUser]
+    [activeChatId, isProUser]
   );
 
   useEffect(() => {
@@ -362,7 +375,7 @@ export default function ChatPage() {
 
         const fallbackReply =
           uploadedFiles.length > 0
-            ? `Naan un ${uploadedFiles.length} file(s) receive panniten 📎\n\nIdhula enna help venum — summarize, explain, extract details, compare, illa based on this solve pannava?`
+            ? `I received your ${uploadedFiles.length} file(s) 📎\n\nTell me what you want — summarize, explain, extract details, compare, or solve something based on them.`
             : "Connection weak ah iruku da. Reload pannitu illa konjam apram try pannu.";
 
         const aiMsg: Message = {
@@ -431,7 +444,6 @@ export default function ChatPage() {
 
     setMessages(convertedMessages);
     setActiveChatId(chatId);
-
     localStorage.setItem("buddy_messages", JSON.stringify(selectedChat.messages));
     setHistoryOpen(false);
   };
@@ -441,43 +453,97 @@ export default function ChatPage() {
     setUpgradeOpen(false);
   };
 
-  const handleUpgradePayment = (planId: "week" | "month" | "sixMonth") => {
+  const handleUpgradePayment = async (planId: "week" | "month" | "sixMonth") => {
+    let amount = 0;
     let days = 0;
     let label = "";
     let code: "1w" | "1m" | "6m" = "1w";
 
     if (planId === "week") {
+      amount = 1;
       days = 7;
       label = "Pro 1 Week";
       code = "1w";
     } else if (planId === "month") {
+      amount = 99;
       days = 30;
       label = "Pro 1 Month";
       code = "1m";
     } else {
+      amount = 399;
       days = 180;
       label = "Pro 6 Months";
       code = "6m";
     }
 
-    const expires = new Date();
-    expires.setDate(expires.getDate() + days);
+    try {
+      const res = await fetch("/api/create-order", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          amount,
+          planId,
+        }),
+      });
 
-    const newPlan: StoredPlan = {
-      tier: "pro",
-      code,
-      label,
-      expiresAt: expires.toISOString(),
-      firstOfferUsed: true,
-    };
+      const data = await res.json();
 
-    localStorage.setItem("buddy_plan", JSON.stringify(newPlan));
-    setCurrentPlan(newPlan);
-    setUpgradeOpen(false);
+      if (!res.ok || !data.success) {
+        alert("Order create panna mudiyala. Konjam apram try pannu.");
+        return;
+      }
 
-    alert(
-      `Payment successful ✅\n\n${label} activated.\nValid till: ${expires.toDateString()}`
-    );
+      const options = {
+        key: data.key,
+        amount: data.order.amount,
+        currency: data.order.currency,
+        name: "Buddy AI",
+        description: label,
+        order_id: data.order.id,
+        handler: async function (response: any) {
+          const verify = await fetch("/api/verify-payment", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(response),
+          });
+
+          const result = await verify.json();
+
+          if (result.success) {
+            const expires = new Date();
+            expires.setDate(expires.getDate() + days);
+
+            const newPlan: StoredPlan = {
+              tier: "pro",
+              code,
+              label,
+              expiresAt: expires.toISOString(),
+              firstOfferUsed: true,
+            };
+
+            localStorage.setItem("buddy_plan", JSON.stringify(newPlan));
+            setCurrentPlan(newPlan);
+            setUpgradeOpen(false);
+
+            alert(`Payment Success ✅\n\n${label} activated.`);
+          } else {
+            alert("Payment verify aagala.");
+          }
+        },
+        theme: {
+          color: "#4facfe",
+        },
+      };
+
+      const razorpay = new window.Razorpay(options);
+      razorpay.open();
+    } catch {
+      alert("Payment error");
+    }
   };
 
   const hasOnlyWelcomeMessage =
@@ -647,15 +713,15 @@ export default function ChatPage() {
         </div>
 
         <HistoryDrawer
-        open={historyOpen}
-        onClose={() => setHistoryOpen(false)}
-        historyItems={chatHistory}
-        onDeleteHistory={deleteHistoryItem}
-        onNewChat={startNewChat}
-        onSelectHistory={loadChatFromHistory}
-        onRenameHistory={renameHistoryItem}
-        activeChatId={activeChatId}
-        isPro={isProUser}
+          open={historyOpen}
+          onClose={() => setHistoryOpen(false)}
+          historyItems={chatHistory}
+          onDeleteHistory={deleteHistoryItem}
+          onNewChat={startNewChat}
+          onSelectHistory={loadChatFromHistory}
+          onRenameHistory={renameHistoryItem}
+          activeChatId={activeChatId}
+          isPro={isProUser}
         />
 
         <UserProfileDrawer
@@ -676,4 +742,4 @@ export default function ChatPage() {
       </div>
     </div>
   );
-}1
+}

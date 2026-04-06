@@ -9,7 +9,9 @@ import {
   ExternalLink,
   Volume2,
   Square,
-  ChevronDown
+  ChevronDown,
+  Copy,
+  Check
 } from "lucide-react";
 
 export type Message = {
@@ -59,11 +61,13 @@ export const MessageBubble = forwardRef<HTMLDivElement, MessageBubbleProps>(
     const isImage = isImageFile(message);
     const hasFile = !!(message.fileUrl && message.fileUrl !== "");
     const hasText = !!message.content?.trim();
+
     const [previewOpen, setPreviewOpen] = useState(false);
     const [imageFailed, setImageFailed] = useState(false);
     const [isSpeaking, setIsSpeaking] = useState(false);
     const [voicePopupOpen, setVoicePopupOpen] = useState(false);
     const [selectedVoiceName, setSelectedVoiceName] = useState<string>("");
+    const [copied, setCopied] = useState(false);
 
     const availableVoices = useMemo(() => {
       if (!("speechSynthesis" in window)) return [];
@@ -135,6 +139,18 @@ export const MessageBubble = forwardRef<HTMLDivElement, MessageBubbleProps>(
         .replace(/`(.*?)`/g, "$1")
         .replace(/\n+/g, ". ")
         .trim();
+    };
+
+    const copyMessage = async () => {
+      if (!message.content?.trim()) return;
+
+      try {
+        await navigator.clipboard.writeText(message.content);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1800);
+      } catch {
+        setCopied(false);
+      }
     };
 
     const playVoice = () => {
@@ -437,29 +453,49 @@ export const MessageBubble = forwardRef<HTMLDivElement, MessageBubbleProps>(
               </span>
 
               {message.role === "ai" && hasText && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (isSpeaking) {
-                      stopVoice();
-                    } else {
-                      setVoicePopupOpen((prev) => !prev);
-                    }
-                  }}
-                  className="w-6 h-6 rounded-full flex items-center justify-center"
-                  style={{
-                    background: isSpeaking
-                      ? "rgba(239, 68, 68, 0.14)"
-                      : "rgba(79, 172, 254, 0.10)",
-                    border: isSpeaking
-                      ? "1px solid rgba(239, 68, 68, 0.30)"
-                      : "1px solid rgba(79, 172, 254, 0.20)",
-                    color: isSpeaking ? "#f87171" : "#7ecfff",
-                  }}
-                  title={isSpeaking ? "Stop voice" : "Voice options"}
-                >
-                  {isSpeaking ? <Square size={11} /> : <Volume2 size={11} />}
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={copyMessage}
+                    className="w-6 h-6 rounded-full flex items-center justify-center"
+                    style={{
+                      background: copied
+                        ? "rgba(16, 185, 129, 0.14)"
+                        : "rgba(255,255,255,0.06)",
+                      border: copied
+                        ? "1px solid rgba(16, 185, 129, 0.30)"
+                        : "1px solid rgba(255,255,255,0.08)",
+                      color: copied ? "#34d399" : "#c8d8f0",
+                    }}
+                    title={copied ? "Copied" : "Copy reply"}
+                  >
+                    {copied ? <Check size={11} /> : <Copy size={11} />}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (isSpeaking) {
+                        stopVoice();
+                      } else {
+                        setVoicePopupOpen((prev) => !prev);
+                      }
+                    }}
+                    className="w-6 h-6 rounded-full flex items-center justify-center"
+                    style={{
+                      background: isSpeaking
+                        ? "rgba(239, 68, 68, 0.14)"
+                        : "rgba(79, 172, 254, 0.10)",
+                      border: isSpeaking
+                        ? "1px solid rgba(239, 68, 68, 0.30)"
+                        : "1px solid rgba(79, 172, 254, 0.20)",
+                      color: isSpeaking ? "#f87171" : "#7ecfff",
+                    }}
+                    title={isSpeaking ? "Stop voice" : "Voice options"}
+                  >
+                    {isSpeaking ? <Square size={11} /> : <Volume2 size={11} />}
+                  </button>
+                </>
               )}
             </div>
           </div>
