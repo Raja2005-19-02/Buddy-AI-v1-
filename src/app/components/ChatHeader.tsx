@@ -8,7 +8,11 @@ interface ChatHeaderProps {
   isPro?: boolean;
 }
 
-export function ChatHeader({ onHistoryClick, onProfileClick, isPro = false }: ChatHeaderProps) {
+export function ChatHeader({
+  onHistoryClick,
+  onProfileClick,
+  isPro = false,
+}: ChatHeaderProps) {
   return (
     <div
       className="flex items-center justify-between px-4 py-3 relative z-10"
@@ -21,7 +25,6 @@ export function ChatHeader({ onHistoryClick, onProfileClick, isPro = false }: Ch
         boxShadow: "0 4px 30px rgba(0,0,0,0.3)",
       }}
     >
-      {/* History Button */}
       <motion.button
         whileTap={{ scale: 0.9 }}
         onClick={onHistoryClick}
@@ -38,7 +41,6 @@ export function ChatHeader({ onHistoryClick, onProfileClick, isPro = false }: Ch
         </span>
       </motion.button>
 
-      {/* Center: Logo + Name */}
       <div className="flex items-center gap-2">
         <div
           className="w-8 h-8 rounded-full overflow-hidden flex items-center justify-center"
@@ -50,6 +52,7 @@ export function ChatHeader({ onHistoryClick, onProfileClick, isPro = false }: Ch
         >
           <BuddyAvatar size={26} />
         </div>
+
         <div className="flex flex-col items-center">
           <span
             className="leading-none"
@@ -65,26 +68,35 @@ export function ChatHeader({ onHistoryClick, onProfileClick, isPro = false }: Ch
           >
             Buddy AI
           </span>
+
           <div className="flex items-center gap-1 mt-0.5">
             <span
               className="w-1.5 h-1.5 rounded-full"
-              style={{ background: "#22d3ee", boxShadow: "0 0 6px #22d3ee" }}
+              style={{
+                background: isPro ? "#a78bfa" : "#22d3ee",
+                boxShadow: isPro ? "0 0 6px #a78bfa" : "0 0 6px #22d3ee",
+              }}
             />
-            <span style={{ fontSize: "10px", color: "rgba(130, 200, 255, 0.7)", fontWeight: 500 }}>
-              Online
+            <span
+              style={{
+                fontSize: "10px",
+                color: isPro ? "rgba(196,181,253,0.9)" : "rgba(130, 200, 255, 0.7)",
+                fontWeight: 700,
+                letterSpacing: "0.3px",
+              }}
+            >
+              {isPro ? "PRO" : "BASIC"}
             </span>
           </div>
         </div>
       </div>
 
-      {/* User Avatar / Profile Button */}
       <motion.button
         whileTap={{ scale: 0.9 }}
         onClick={onProfileClick}
         className="relative flex items-center justify-center"
         style={{ width: 38, height: 38 }}
       >
-        {/* Outer ring */}
         <div
           className="absolute inset-0 rounded-full"
           style={{
@@ -95,7 +107,6 @@ export function ChatHeader({ onHistoryClick, onProfileClick, isPro = false }: Ch
             borderRadius: "50%",
           }}
         />
-        {/* Avatar circle */}
         <div
           className="w-9 h-9 rounded-full flex items-center justify-center relative z-10"
           style={{
@@ -123,12 +134,12 @@ export function ChatHeader({ onHistoryClick, onProfileClick, isPro = false }: Ch
             AJ
           </span>
         </div>
-        {/* Online dot */}
+
         <span
           className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full z-20"
           style={{
-            background: "#22d3ee",
-            boxShadow: "0 0 6px #22d3ee",
+            background: isPro ? "#a78bfa" : "#22d3ee",
+            boxShadow: isPro ? "0 0 6px #a78bfa" : "0 0 6px #22d3ee",
             border: "1.5px solid #0a1020",
           }}
         />

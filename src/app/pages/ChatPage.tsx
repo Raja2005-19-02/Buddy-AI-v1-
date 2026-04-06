@@ -647,14 +647,15 @@ export default function ChatPage() {
         </div>
 
         <HistoryDrawer
-          open={historyOpen}
-          onClose={() => setHistoryOpen(false)}
-          historyItems={chatHistory}
-          onDeleteHistory={deleteHistoryItem}
-          onNewChat={startNewChat}
-          onSelectHistory={loadChatFromHistory}
-          onRenameHistory={renameHistoryItem}
-          activeChatId={activeChatId}
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        historyItems={chatHistory}
+        onDeleteHistory={deleteHistoryItem}
+        onNewChat={startNewChat}
+        onSelectHistory={loadChatFromHistory}
+        onRenameHistory={renameHistoryItem}
+        activeChatId={activeChatId}
+        isPro={isProUser}
         />
 
         <UserProfileDrawer

@@ -18,6 +18,7 @@ interface HistoryDrawerProps {
   onSelectHistory: (id: string) => void;
   onRenameHistory: (id: string, newTitle: string) => void;
   activeChatId: string | null;
+  isPro?: boolean;
 }
 
 export function HistoryDrawer({
@@ -29,6 +30,7 @@ export function HistoryDrawer({
   onSelectHistory,
   onRenameHistory,
   activeChatId,
+  isPro = false,
 }: HistoryDrawerProps) {
   return (
     <AnimatePresence>
@@ -219,8 +221,10 @@ export function HistoryDrawer({
               className="px-5 py-4"
               style={{ borderTop: "1px solid rgba(79, 172, 254, 0.08)" }}
             >
-              <p style={{ fontSize: "11px", color: "rgba(80, 110, 150, 0.6)", textAlign: "center" }}>
-                Buddy AI • Basic plan ({historyItems.length}/10 chats)
+              <p style={{ fontSize: "11px", color: "rgba(80, 110, 150, 0.75)", textAlign: "center" }}>
+                {isPro
+                  ? `Buddy AI • Pro Plan (Unlimited chats)`
+                  : `Buddy AI • Basic Plan (${historyItems.length}/10 chats)`}
               </p>
             </div>
           </motion.div>
