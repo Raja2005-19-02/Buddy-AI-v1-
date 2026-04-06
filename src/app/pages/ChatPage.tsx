@@ -46,21 +46,29 @@ const initialMessages: Message[] = [
 function getStoredPlan(): StoredPlan {
   try {
     const saved = localStorage.getItem("buddy_plan");
+
     if (!saved) {
-      return { tier: "basic", code: "basic", label: "Basic Plan", firstOfferUsed: false };
+      return {
+        tier: "basic",
+        code: "basic",
+        label: "Basic Plan",
+        firstOfferUsed: false,
+      };
     }
 
     const parsed = JSON.parse(saved) as StoredPlan;
 
     if (parsed.tier === "pro" && parsed.expiresAt) {
       const expired = new Date(parsed.expiresAt).getTime() < Date.now();
+
       if (expired) {
-        const basicPlan = {
-          tier: "basic" as const,
-          code: "basic" as const,
+        const basicPlan: StoredPlan = {
+          tier: "basic",
+          code: "basic",
           label: "Basic Plan",
           firstOfferUsed: parsed.firstOfferUsed ?? true,
         };
+
         localStorage.setItem("buddy_plan", JSON.stringify(basicPlan));
         return basicPlan;
       }
@@ -68,7 +76,12 @@ function getStoredPlan(): StoredPlan {
 
     return parsed;
   } catch {
-    return { tier: "basic", code: "basic", label: "Basic Plan", firstOfferUsed: false };
+    return {
+      tier: "basic",
+      code: "basic",
+      label: "Basic Plan",
+      firstOfferUsed: false,
+    };
   }
 }
 
@@ -183,39 +196,40 @@ export default function ChatPage() {
   useEffect(() => {
     localStorage.setItem("buddy_plan", JSON.stringify(currentPlan));
   }, [currentPlan]);
+
   useEffect(() => {
-  let startY = 0;
-  let endY = 0;
+    let startY = 0;
+    let endY = 0;
 
-  const onTouchStart = (e: TouchEvent) => {
-    if (window.scrollY === 0) {
-      startY = e.touches[0].clientY;
+    const onTouchStart = (e: TouchEvent) => {
+      if (window.scrollY === 0) {
+        startY = e.touches[0].clientY;
+        endY = e.touches[0].clientY;
+      }
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
       endY = e.touches[0].clientY;
-    }
-  };
+    };
 
-  const onTouchMove = (e: TouchEvent) => {
-    endY = e.touches[0].clientY;
-  };
+    const onTouchEnd = () => {
+      if (window.scrollY === 0 && endY - startY > 90) {
+        window.location.reload();
+      }
+      startY = 0;
+      endY = 0;
+    };
 
-  const onTouchEnd = () => {
-    if (window.scrollY === 0 && endY - startY > 90) {
-      window.location.reload();
-    }
-    startY = 0;
-    endY = 0;
-  };
+    window.addEventListener("touchstart", onTouchStart, { passive: true });
+    window.addEventListener("touchmove", onTouchMove, { passive: true });
+    window.addEventListener("touchend", onTouchEnd);
 
-  window.addEventListener("touchstart", onTouchStart, { passive: true });
-  window.addEventListener("touchmove", onTouchMove, { passive: true });
-  window.addEventListener("touchend", onTouchEnd);
-
-  return () => {
-    window.removeEventListener("touchstart", onTouchStart);
-    window.removeEventListener("touchmove", onTouchMove);
-    window.removeEventListener("touchend", onTouchEnd);
-  };
-}, []);
+    return () => {
+      window.removeEventListener("touchstart", onTouchStart);
+      window.removeEventListener("touchmove", onTouchMove);
+      window.removeEventListener("touchend", onTouchEnd);
+    };
+  }, []);
 
   const uploadSingleFile = async (file: File) => {
     const fallbackLocalUrl = URL.createObjectURL(file);
@@ -224,9 +238,9 @@ export default function ChatPage() {
 
     try {
       const uploadRes = await fetch("/api/upload", {
-  method: "POST",
-  body: formData,
-});
+        method: "POST",
+        body: formData,
+      });
 
       const uploadData = await uploadRes.json();
 
@@ -300,78 +314,73 @@ export default function ChatPage() {
       setIsTyping(true);
       scrollToBottom();
 
+      const fileNamesText =
+        uploadedFiles.length > 0
+          ? uploadedFiles.map((file) => file.name).join(", ")
+          : "";
+
+      const backendMessage =
+        uploadedFiles.length > 0
+          ? trimmed
+            ? `User uploaded ${uploadedFiles.length} file(s): ${fileNamesText}. User message: ${trimmed}`
+            : `User uploaded ${uploadedFiles.length} file(s): ${fileNamesText}. Please acknowledge the files and ask what they want to do with them.`
+          : trimmed;
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 20000);
+
       try {
-        const fileNamesText =
+        const res = await fetch("/api/chat", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            message: backendMessage,
+          }),
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        const data = await res.json();
+
+        const aiMsg: Message = {
+          id: `${Date.now()}-ai`,
+          role: "ai",
+          content: data.reply || "No reply from AI",
+          timestamp: new Date(),
+        };
+
+        setMessages((prev) => {
+          const updatedMessages = [...prev, aiMsg];
+          saveCurrentChatToHistory(updatedMessages);
+          return updatedMessages;
+        });
+      } catch {
+        clearTimeout(timeoutId);
+
+        const fallbackReply =
           uploadedFiles.length > 0
-            ? uploadedFiles.map((file) => file.name).join(", ")
-            : "";
+            ? `Naan un ${uploadedFiles.length} file(s) receive panniten 📎\n\nIdhula enna help venum — summarize, explain, extract details, compare, illa based on this solve pannava?`
+            : "Connection weak ah iruku da. Reload pannitu illa konjam apram try pannu.";
 
-        const backendMessage =
-          uploadedFiles.length > 0
-            ? trimmed
-              ? `User uploaded ${uploadedFiles.length} file(s): ${fileNamesText}. User message: ${trimmed}`
-              : `User uploaded ${uploadedFiles.length} file(s): ${fileNamesText}. Please acknowledge the files and ask what they want to do with them.`
-            : trimmed;
+        const aiMsg: Message = {
+          id: `${Date.now()}-ai`,
+          role: "ai",
+          content: fallbackReply,
+          timestamp: new Date(),
+        };
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 20000);
-
-  try {
-    const res = await fetch("/api/chat", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        message: backendMessage,
-      }),
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeoutId);
-
-    const data = await res.json();
-
-    const aiMsg: Message = {
-      id: `${Date.now()}-ai`,
-      role: "ai",
-      content: data.reply || "No reply from AI",
-      timestamp: new Date(),
-    };
-
-    setMessages((prev) => {
-      const updatedMessages = [...prev, aiMsg];
-      saveCurrentChatToHistory(updatedMessages);
-      return updatedMessages;
-    });
-  } catch {
-    clearTimeout(timeoutId);
-
-    const fallbackReply =
-      uploadedFiles.length > 0
-        ? `Naan un ${uploadedFiles.length} file(s) receive panniten 📎\n\nIdhula enna help venum — summarize, explain, extract details, compare, illa based on this solve pannava?`
-        : "Connection weak ah iruku da. Reload pannitu illa konjam apram try pannu.";
-
-    const aiMsg: Message = {
-      id: `${Date.now()}-ai`,
-      role: "ai",
-      content: fallbackReply,
-      timestamp: new Date(),
-    };
-
-    setMessages((prev) => {
-      const updatedMessages = [...prev, aiMsg];
-      saveCurrentChatToHistory(updatedMessages);
-      return updatedMessages;
-    });
-  } finally {
-    setIsTyping(false);
-    scrollToBottom();
-  }
-} finally {
-  setIsTyping(false);
-  scrollToBottom();
-}
+        setMessages((prev) => {
+          const updatedMessages = [...prev, aiMsg];
+          saveCurrentChatToHistory(updatedMessages);
+          return updatedMessages;
+        });
+      } finally {
+        setIsTyping(false);
+        scrollToBottom();
+      }
     },
     [scrollToBottom, saveCurrentChatToHistory, isProUser, chatHistory.length, activeChatId]
   );
@@ -430,6 +439,45 @@ export default function ChatPage() {
   const handlePlanChange = (plan: StoredPlan) => {
     setCurrentPlan(plan);
     setUpgradeOpen(false);
+  };
+
+  const handleUpgradePayment = (planId: "week" | "month" | "sixMonth") => {
+    let days = 0;
+    let label = "";
+    let code: "1w" | "1m" | "6m" = "1w";
+
+    if (planId === "week") {
+      days = 7;
+      label = "Pro 1 Week";
+      code = "1w";
+    } else if (planId === "month") {
+      days = 30;
+      label = "Pro 1 Month";
+      code = "1m";
+    } else {
+      days = 180;
+      label = "Pro 6 Months";
+      code = "6m";
+    }
+
+    const expires = new Date();
+    expires.setDate(expires.getDate() + days);
+
+    const newPlan: StoredPlan = {
+      tier: "pro",
+      code,
+      label,
+      expiresAt: expires.toISOString(),
+      firstOfferUsed: true,
+    };
+
+    localStorage.setItem("buddy_plan", JSON.stringify(newPlan));
+    setCurrentPlan(newPlan);
+    setUpgradeOpen(false);
+
+    alert(
+      `Payment successful ✅\n\n${label} activated.\nValid till: ${expires.toDateString()}`
+    );
   };
 
   const hasOnlyWelcomeMessage =
@@ -591,7 +639,8 @@ export default function ChatPage() {
         <div
           className="relative z-10 mt-auto"
           style={{
-            background: "linear-gradient(180deg, rgba(13,22,36,0) 0%, rgba(10,16,24,0.95) 35%, rgba(10,16,24,1) 100%)",
+            background:
+              "linear-gradient(180deg, rgba(13,22,36,0) 0%, rgba(10,16,24,0.95) 35%, rgba(10,16,24,1) 100%)",
           }}
         >
           <ChatInput onSend={handleSend} disabled={isTyping} />
@@ -619,8 +668,11 @@ export default function ChatPage() {
         <UpgradeModal
           open={upgradeOpen}
           onClose={() => setUpgradeOpen(false)}
+          currentPlan={currentPlan}
+          onPlanChange={handlePlanChange}
+          onPay={handleUpgradePayment}
         />
       </div>
     </div>
   );
-}
+}1

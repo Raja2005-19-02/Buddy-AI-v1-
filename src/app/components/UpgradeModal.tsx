@@ -2,16 +2,44 @@ import { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { X, ShieldCheck, Check, Sparkles, BadgePercent, Crown } from "lucide-react";
 
-interface UpgradeModalProps {
-  open: boolean;
-  onClose: () => void;
-}
+type StoredPlan = {
+  tier: "basic" | "pro";
+  code: "basic" | "1w" | "1m" | "6m";
+  label: string;
+  expiresAt?: string;
+  firstOfferUsed?: boolean;
+};
 
 type PlanId = "week" | "month" | "sixMonth";
 
-const plans = [
+interface UpgradeModalProps {
+  open: boolean;
+  onClose: () => void;
+  currentPlan: StoredPlan;
+  onPlanChange: (plan: StoredPlan) => void;
+  onPay?: (planId: PlanId) => void;
+}
+
+const plans: {
+  id: PlanId;
+  code: "1w" | "1m" | "6m";
+  title: string;
+  subtitle: string;
+  originalPrice: number;
+  discountedPrice: number;
+  badge: string;
+  badgeColor: string;
+  badgeText: string;
+  cardBg: string;
+  cardBorder: string;
+  accent: string;
+  ctaText: string;
+  trustLine: string;
+  benefits: string[];
+}[] = [
   {
-    id: "week" as PlanId,
+    id: "week",
+    code: "1w",
     title: "Pro 1 Week",
     subtitle: "First time user offer",
     originalPrice: 49,
@@ -32,7 +60,8 @@ const plans = [
     ],
   },
   {
-    id: "month" as PlanId,
+    id: "month",
+    code: "1m",
     title: "Pro 1 Month",
     subtitle: "Best for regular users",
     originalPrice: 149,
@@ -53,7 +82,8 @@ const plans = [
     ],
   },
   {
-    id: "sixMonth" as PlanId,
+    id: "sixMonth",
+    code: "6m",
     title: "Pro 6 Months",
     subtitle: "Offer plan",
     originalPrice: 699,
@@ -79,8 +109,27 @@ function formatINR(value: number) {
   return `₹${value}`;
 }
 
-export function UpgradeModal({ open, onClose }: UpgradeModalProps) {
-  const [selectedPlan, setSelectedPlan] = useState<PlanId>("week");
+function createExpiry(days: number) {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return date.toISOString();
+}
+
+export function UpgradeModal({
+  open,
+  onClose,
+  currentPlan,
+  onPlanChange,
+  onPay,
+}: UpgradeModalProps) {
+  const initialSelectedPlan: PlanId =
+    currentPlan.code === "1m"
+      ? "month"
+      : currentPlan.code === "6m"
+      ? "sixMonth"
+      : "week";
+
+  const [selectedPlan, setSelectedPlan] = useState<PlanId>(initialSelectedPlan);
 
   const activePlan = useMemo(
     () => plans.find((plan) => plan.id === selectedPlan) || plans[0],
@@ -94,6 +143,31 @@ export function UpgradeModal({ open, onClose }: UpgradeModalProps) {
       : activePlan.id === "month"
       ? "One month access"
       : "7 day access";
+
+  const activatePlan = (planId: PlanId) => {
+    const selected = plans.find((plan) => plan.id === planId);
+    if (!selected) return;
+
+    const days =
+      selected.code === "1w" ? 7 : selected.code === "1m" ? 30 : 180;
+
+    const nextPlan: StoredPlan = {
+      tier: "pro",
+      code: selected.code,
+      label: selected.title,
+      expiresAt: createExpiry(days),
+      firstOfferUsed: true,
+    };
+
+    onPlanChange(nextPlan);
+
+    if (onPay) {
+      onPay(planId);
+      return;
+    }
+
+    alert(`${selected.title} activated da 🚀`);
+  };
 
   return (
     <AnimatePresence>
@@ -359,7 +433,8 @@ export function UpgradeModal({ open, onClose }: UpgradeModalProps) {
                                   color: "rgba(145,220,255,0.82)",
                                 }}
                               >
-                                • {plan.id === "sixMonth"
+                                •{" "}
+                                {plan.id === "sixMonth"
                                   ? `₹${Math.round(plan.discountedPrice / 6)}/month`
                                   : plan.id === "month"
                                   ? "Monthly access"
@@ -367,26 +442,6 @@ export function UpgradeModal({ open, onClose }: UpgradeModalProps) {
                               </span>
                             </div>
                           </div>
-
-                          {plan.id === "week" && (
-                            <div
-                              className="px-2 py-1 rounded-full"
-                              style={{
-                                background: "rgba(79,172,254,0.16)",
-                                border: "1px solid rgba(79,172,254,0.18)",
-                              }}
-                            >
-                              <span
-                                style={{
-                                  fontSize: "9px",
-                                  fontWeight: 800,
-                                  color: "#7ecfff",
-                                }}
-                              >
-                                TRY NOW
-                              </span>
-                            </div>
-                          )}
                         </div>
                       </button>
                     );
@@ -481,6 +536,7 @@ export function UpgradeModal({ open, onClose }: UpgradeModalProps) {
                 </div>
 
                 <button
+                  onClick={() => activatePlan(activePlan.id)}
                   className="w-full py-3.5 rounded-2xl"
                   style={{
                     background:
